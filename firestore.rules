@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // Validation Blueprints
+    function isValidUser(data) {
+      let requiredFields = [
+        'uid', 'name', 'email', 'role', 'address', 'birthday', 'age', 'civilStatus', 'createdAt', 'lastLogin',
+        'fatherName', 'fatherContact', 'fatherOccupation', 'motherName', 'motherContact', 'motherOccupation'
+      ];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().size() >= 16 && 
+             data.uid is string && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['resident', 'admin'] &&
+             data.address is string && data.address.size() <= 100 &&
+             data.birthday is string && data.birthday.size() <= 20 &&
+             data.age is number && data.age >= 0 && data.age <= 150 &&
+             data.civilStatus in ['Single', 'Married', 'Widowed', 'Separated'] &&
+             data.createdAt is string &&
+             data.lastLogin is string &&
+             data.fatherName is string && data.fatherName.size() > 0 &&
+             data.fatherContact is string && data.fatherContact.size() > 0 &&
+             data.fatherOccupation is string && data.fatherOccupation.size() > 0 &&
+             data.motherName is string && data.motherName.size() > 0 &&
+             data.motherContact is string && data.motherContact.size() > 0 &&
+             data.motherOccupation is string && data.motherOccupation.size() > 0 &&
+             // Optional fields validation
+             (!data.keys().hasAny(['guardianName']) || data.guardianName is string) &&
+             (!data.keys().hasAny(['guardianContact']) || data.guardianContact is string) &&
+             (!data.keys().hasAny(['guardianOccupation']) || data.guardianOccupation is string);
+    }
+
+    function isValidRequest(data) {
+      let requiredFields = ['userId', 'userName', 'userEmail', 'docType', 'purpose', 'status', 'timestamp'];
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().size() >= 7 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.userEmail is string && data.userEmail.size() <= 100 &&
+             data.docType in ['Certificate of Indigency', 'Barangay Clearance', 'Cedula'] &&
+             data.purpose is string && data.purpose.size() > 0 && data.purpose.size() <= 1000 &&
+             data.status in ['Pending', 'Processed', 'Cancelled'] &&
+             data.timestamp is string &&
+             (!data.keys().hasAny(['adminComment']) || data.adminComment is string) &&
+             (!data.keys().hasAny(['commentedAt']) || data.commentedAt is string);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && 
+                      isValidId(userId) && 
+                      userId == request.auth.uid &&
+                      isValidUser(incoming()) && 
+                      incoming().uid == request.auth.uid && 
+                      (incoming().role == 'resident' || (incoming().role == 'admin' && incoming().email == 'abrahamalpapara16@gmail.com'));
+      
+      allow update: if isValidId(userId) && (
+        (isOwner(userId) && isValidUser(incoming()) && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'address', 'birthday', 'age', 'civilStatus', 'fatherName', 'fatherContact', 'fatherOccupation', 'motherName', 'motherContact', 'motherOccupation', 'guardianName', 'guardianContact', 'guardianOccupation', 'lastLogin']) &&
+         incoming().role == existing().role && 
+         incoming().email == existing().email) || 
+        isAdmin()
+      );
+    }
+
+    // Requests Collection
+    match /requests/{requestId} {
+      allow create: if isSignedIn() && 
+                      isValidRequest(incoming()) && 
+                      incoming().userId == request.auth.uid &&
+                      incoming().status == 'Pending';
+      
+      allow get: if isValidId(requestId) && (isOwner(existing().userId) || isAdmin());
+      
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow update: if isValidId(requestId) && (
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['status', 'processedAt', 'processedBy', 'adminComment', 'commentedAt'])) ||
+        (isOwner(existing().userId) && existing().status == 'Pending' && incoming().diff(existing()).affectedKeys().hasOnly(['purpose', 'docType']))
+      );
+      
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+  }
+}

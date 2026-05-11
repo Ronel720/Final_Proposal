@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Resident or Admin profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["resident", "admin"] },
+        "address": { "type": "string", "description": "Zone or Purok" },
+        "birthday": { "type": "string", "format": "date" },
+        "age": { "type": "number" },
+        "civilStatus": { "type": "string", "enum": ["Single", "Married", "Widowed", "Separated"] },
+        "fatherName": { "type": "string" },
+        "fatherContact": { "type": "string" },
+        "fatherOccupation": { "type": "string" },
+        "motherName": { "type": "string" },
+        "motherContact": { "type": "string" },
+        "motherOccupation": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Request": {
+      "title": "Document Request",
+      "description": "Request for barangay documents",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "docType": { "type": "string", "enum": ["Certificate of Indigency", "Barangay Clearance", "Cedula"] },
+        "purpose": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Processed", "Cancelled"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "processedAt": { "type": "string", "format": "date-time" },
+        "processedBy": { "type": "string" },
+        "adminComment": { "type": "string" },
+        "commentedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "docType", "purpose", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    },
+    "/requests/{requestId}": {
+      "schema": "Request",
+      "description": "Collection of document requests"
+    }
+  }
+}
